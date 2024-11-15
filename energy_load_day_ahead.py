@@ -13,14 +13,22 @@ API_KEY = os.getenv("API_KEY")
 # Base URL for ENTSO-E API
 BASE_URL = "https://web-api.tp.entsoe.eu/api"
 
-# Define the start date for the data request
-request_date = datetime(2024, 11, 8)  # Example date: 8th November 2024
-start_time = "0000"  # Time in HHMM format, e.g., "0000" for midnight
-end_time = "0000"  # Time in HHMM format, end time at the same point next day, 0000
+# Define the date range
+days_back = 3  # Number of days back to start fetching data
+last_day = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-# Format the start and end period strings
-start_str = request_date.strftime("%Y%m%d") + start_time
-end_str = (request_date + timedelta(days=1)).strftime("%Y%m%d") + end_time
+print(last_day)
+# Specify the last day in YYYY-MM-DD format
+
+# Convert last_day to a datetime object
+end_date = datetime.strptime(last_day, "%Y-%m-%d")
+start_date = end_date - timedelta(days=days_back - 1)
+
+timezone_offset = 1  # CET during winter (UTC+1). Use 2 for summer time (CEST).
+
+# Convert local time to UTC for start and end periods
+utc_start = (start_date - timedelta(hours=timezone_offset)).strftime("%Y%m%d%H%M")
+utc_end = ((end_date + timedelta(days=1)) - timedelta(hours=timezone_offset)).strftime("%Y%m%d%H%M")
 
 # Country codes dictionary (country -> list of country codes)
 country_codes = {
@@ -41,7 +49,7 @@ def fetch_day_ahead_load(start_str, end_str, country_code="10YCZ-CEPS-----N"):
         return None
 
 # Parse XML and format data as required
-def parse_and_format_data(xml_data, country_name):
+def parse_and_format_data(xml_data, country_name, timezone_offset):
     root = ET.fromstring(xml_data)
     ns = {'ns': 'urn:iec62325.351:tc57wg16:451-6:generationloaddocument:3:0'}
     time_series = root.findall('.//ns:TimeSeries', ns)
@@ -59,18 +67,24 @@ def parse_and_format_data(xml_data, country_name):
         period_start_dt = datetime.strptime(period_start, "%Y-%m-%dT%H:%MZ")
         period_end_dt = datetime.strptime(period_end, "%Y-%m-%dT%H:%MZ")
         
-        day_of_week = int(period_start_dt.strftime('%w'))
-        
+        # Adjust timestamps to the local timezone
+        local_start_dt = period_start_dt + timedelta(hours=timezone_offset)
+        local_end_dt = period_end_dt + timedelta(hours=timezone_offset)
+
         for point in points:
             position = point.find('.//ns:position', ns).text
             quantity = point.find('.//ns:quantity', ns).text
-            timestamp = period_start_dt + timedelta(hours=int(position) - 1)
-            formatted_data.append({
-                'timestamp': timestamp,
-                'load_value': quantity,
-                'day_of_week': day_of_week,
-                'country': country_name
-            })
+            timestamp_utc = period_start_dt + timedelta(hours=int(position) - 1)
+            timestamp_local = timestamp_utc + timedelta(hours=timezone_offset)
+            
+            # Include only timestamps within the requested range
+            if start_date.date() <= timestamp_local.date() <= end_date.date():
+                formatted_data.append({
+                    'timestamp': timestamp_local,
+                    'load_value': quantity,
+                    'day_of_week': timestamp_local.weekday(),
+                    'country': country_name
+                })
     
     df = pd.DataFrame(formatted_data)
     return df
@@ -83,12 +97,12 @@ for country_name, codes in country_codes.items():
     data_available = False
     
     for country_code in codes:
-        print(f"Fetching data for {country_name} ({country_code}) from {start_str} to {end_str}")
-        data = fetch_day_ahead_load(start_str, end_str, country_code)
+        print(f"Fetching data for {country_name} ({country_code}) from {utc_start} to {utc_end}")
+        data = fetch_day_ahead_load(utc_start, utc_end, country_code)
         
         if data:
             print(f"Data fetched successfully for {country_name} ({country_code})")
-            formatted_df = parse_and_format_data(data, country_name)
+            formatted_df = parse_and_format_data(data, country_name, timezone_offset)
             all_data.append(formatted_df)  
             data_available = True
         else:
@@ -106,7 +120,7 @@ for country_name, codes in country_codes.items():
 # If data is collected, save it to a CSV file
 if all_data:
     final_df = pd.concat(all_data, ignore_index=True)
-    output_filename = f"day_ahead_load_{request_date.strftime('%Y%m%d')}.csv.gz"
+    output_filename = f"day_ahead_load_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.csv.gz"
     
     # Remove any pre-existing file before saving new data
     if os.path.exists(output_filename):
