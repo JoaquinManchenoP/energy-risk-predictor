@@ -14,7 +14,7 @@ API_KEY = os.getenv("API_KEY")
 BASE_URL = "https://web-api.tp.entsoe.eu/api"
 
 # Define the date range
-days_back = 3  # Number of days back to start fetching data
+days_back = 548  # Number of days back to start fetching data
 last_day = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
 print(last_day)
@@ -33,6 +33,49 @@ utc_end = ((end_date + timedelta(days=1)) - timedelta(hours=timezone_offset)).st
 # Country codes dictionary (country -> list of country codes)
 country_codes = {
     "Ireland": ["10Y1001A1001A016", "10YIE-1001A00010", "10Y1001A1001A59C", "10Y1001A1001A63L"],
+    "Estonia": ["10Y1001A1001A39I"],
+    "United_Kingdom": ["10Y1001A1001A92E", "10YGB----------A"],
+    "Germany": ["10Y1001A1001A83F", "10Y1001A1001A63L", "10YDE-ENBW-----N", "10YDE-EON------1", "10YDE-RWENET---I", "10YDE-VE-------2"],
+    "France": ["10YFR-RTE------C"],
+    "Sweden": ["10Y1001A1001A44P", "10Y1001A1001A45N", "10Y1001A1001A46L", "10Y1001A1001A47J"],
+    "Norway": ["10YNO-0--------C", "10YNO-1--------2", "10YNO-2--------T", "10YNO-3--------J", "10YNO-4--------9", "10Y1001A1001A48H"],
+    "Russia": ["10Y1001A1001A49F", "10Y1001A1001A50U"],
+    "Belarus": ["10Y1001A1001A51S", "10Y1001A1001B004"],
+    "Italy": ["10Y1001A1001A67D", "10Y1001A1001A68B", "10Y1001A1001A70O", "10Y1001A1001A71M", "10Y1001A1001A75E", "10Y1001A1001A74G", "10Y1001A1001A73I", "10Y1001A1001A788", "10Y1001A1001A796"],
+    "Austria": ["10YAT-APG------L"],
+    "Denmark": ["10Y1001A1001A65H", "10Y1001A1001A64J", "10YDK-1--------W", "10YDK-2--------M"],
+    "Finland": ["10YFI-1--------U"],
+    "Spain": ["10YES-REE------0"],
+    "Portugal": ["10YPT-REN------W"],
+    "Poland": ["10YPL-AREA-----S"],
+    "Czech_Republic": ["10YCZ-CEPS-----N"],
+    "Slovakia": ["10YSK-SEPS-----K"],
+    "Switzerland": ["10YCH-SWISSGRIDZ"],
+    "Netherlands": ["10YNL----------L"],
+    "Belgium": ["10YBE----------2"],
+    "Luxembourg": ["10YLU-CEGEDEL-NQ"],
+    "Lithuania": ["10YLT-1001A0008Q"],
+    "Latvia": ["10YLV-1001A00074"],
+    "North_Macedonia": ["10YMK-MEPSO----8"],
+    "Greece": ["10YGR-HTSO-----Y"],
+    "Croatia": ["10YHR-HEP------M"],
+    "Hungary": ["10YHU-MAVIR----U"],
+    "Bosnia_and_Herzegovina": ["10YBA-JPCC-----D"],
+    "Montenegro": ["10YCS-CG-TSO---S"],
+    "Serbia": ["10YCS-SERBIATSOV"],
+    "Albania": ["10YAL-KESH-----5"],
+    "Romania": ["10YRO-TEL------P"],
+    "Bulgaria": ["10YCA-BULGARIA-R"],
+    "Turkey": ["10YTR-TEIAS----W"],
+    "Ukraine": ["10Y1001C--000182", "10Y1001C--00031A", "10Y1001C--00038X"],
+    "Moldova": ["10Y1001A1001A990"],
+    "Armenia": ["10Y1001A1001B004"],
+    "Georgia": ["10Y1001A1001B012"],
+    "Azerbaijan": ["10Y1001A1001B05V"],
+    "Malta": ["10Y1001A1001A93C"],
+    "Iceland": ["IS"],
+    "Kosovo": ["10Y1001C--00100H"],
+    "Cyprus": ["10YCY-1001A0003J"]
 }
 
 # Function to fetch data for a specific period
@@ -134,49 +177,3 @@ else:
 
 
 
-# country_codes = {
-#     # "Ireland": ["10Y1001A1001A016", "10YIE-1001A00010", "10Y1001A1001A59C", "10Y1001A1001A63L"],
-#     # "Estonia": ["10Y1001A1001A39I"],
-#     # "United_Kingdom": ["10Y1001A1001A92E", "10YGB----------A"],
-#     # "Germany": ["10Y1001A1001A83F", "10Y1001A1001A63L", "10YDE-ENBW-----N", "10YDE-EON------1", "10YDE-RWENET---I", "10YDE-VE-------2"],
-#     # "France": ["10YFR-RTE------C"],
-#     # "Sweden": ["10Y1001A1001A44P", "10Y1001A1001A45N", "10Y1001A1001A46L", "10Y1001A1001A47J"],
-#     # "Norway": ["10YNO-0--------C", "10YNO-1--------2", "10YNO-2--------T", "10YNO-3--------J", "10YNO-4--------9", "10Y1001A1001A48H"],
-#     # "Russia": ["10Y1001A1001A49F", "10Y1001A1001A50U"],
-#     # "Belarus": ["10Y1001A1001A51S", "10Y1001A1001B004"],
-#     # "Italy": ["10Y1001A1001A67D", "10Y1001A1001A68B", "10Y1001A1001A70O", "10Y1001A1001A71M", "10Y1001A1001A75E", "10Y1001A1001A74G", "10Y1001A1001A73I", "10Y1001A1001A788", "10Y1001A1001A796"],
-#     # "Austria": ["10YAT-APG------L"],
-#     # "Denmark": ["10Y1001A1001A65H", "10Y1001A1001A64J", "10YDK-1--------W", "10YDK-2--------M"],
-#     # "Finland": ["10YFI-1--------U"],
-#     # "Spain": ["10YES-REE------0"],
-#     # "Portugal": ["10YPT-REN------W"],
-#     # "Poland": ["10YPL-AREA-----S"],
-#     # "Czech_Republic": ["10YCZ-CEPS-----N"],
-#     # "Slovakia": ["10YSK-SEPS-----K"],
-#     # "Switzerland": ["10YCH-SWISSGRIDZ"],
-#     # "Netherlands": ["10YNL----------L"],
-#     # "Belgium": ["10YBE----------2"],
-#     # "Luxembourg": ["10YLU-CEGEDEL-NQ"],
-#     # "Lithuania": ["10YLT-1001A0008Q"],
-#     # "Latvia": ["10YLV-1001A00074"],
-#     # "North_Macedonia": ["10YMK-MEPSO----8"],
-#     # "Greece": ["10YGR-HTSO-----Y"],
-#     # "Croatia": ["10YHR-HEP------M"],
-#     # "Hungary": ["10YHU-MAVIR----U"],
-#     # "Bosnia_and_Herzegovina": ["10YBA-JPCC-----D"],
-#     # "Montenegro": ["10YCS-CG-TSO---S"],
-#     # "Serbia": ["10YCS-SERBIATSOV"],
-#     # "Albania": ["10YAL-KESH-----5"],
-#     # "Romania": ["10YRO-TEL------P"],
-#     # "Bulgaria": ["10YCA-BULGARIA-R"],
-#     # "Turkey": ["10YTR-TEIAS----W"],
-#     # "Ukraine": ["10Y1001C--000182", "10Y1001C--00031A", "10Y1001C--00038X"],
-#     # "Moldova": ["10Y1001A1001A990"],
-#     # "Armenia": ["10Y1001A1001B004"],
-#     # "Georgia": ["10Y1001A1001B012"],
-#     # "Azerbaijan": ["10Y1001A1001B05V"],
-#     # "Malta": ["10Y1001A1001A93C"],
-#     # "Iceland": ["IS"],
-#     # "Kosovo": ["10Y1001C--00100H"],
-#     # "Cyprus": ["10YCY-1001A0003J"]
-# }
