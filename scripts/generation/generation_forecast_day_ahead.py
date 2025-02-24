@@ -7,16 +7,13 @@ from dotenv import load_dotenv
 import time
 import requests_cache
 
-# Clear cache to allow retries
 requests_cache.clear()
 
-# Load API key from .env file
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 BASE_URL = "https://web-api.tp.entsoe.eu/api"
 
-# Set up time parameters (using a 1-day period for testing)
-days_back = 1
+days_back = 365
 last_day = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 end_date = datetime.strptime(last_day, "%Y-%m-%d")
 start_date = end_date - timedelta(days=days_back - 1)
@@ -26,15 +23,43 @@ utc_start = (start_date - timedelta(hours=timezone_offset)).strftime("%Y%m%d%H%M
 utc_end = ((end_date + timedelta(days=1)) - timedelta(hours=timezone_offset)).strftime("%Y%m%d%H%M")
 current_time = datetime.now()
 
-# Define country codes (for testing, using one example country)
 country_codes = {
+    "Albania": ["10YAL-KESH-----5"],
     "Austria": ["10YAT-APG------L"],
+    "Belgium": ["10YBE----------2"],
+    "Bosnia_and_Herzegovina": ["10YBA-JPCC-----D"],
+    "Bulgaria": ["10YCA-BULGARIA-R"],
+    "Croatia": ["10YHR-HEP------M"],
+    "Czech_Republic": ["10YCZ-CEPS-----N"],
+    "Denmark": ["10Y1001A1001A65H", "10Y1001A1001A64J", "10YDK-1--------W", "10YDK-2--------M"],
+    "Estonia": ["10Y1001A1001A39I"],
+    "Finland": ["10YFI-1--------U"],
+    "France": ["10YFR-RTE------C"],
+    "Georgia": ["10Y1001A1001B012"],
+    "Germany": ["10Y1001A1001A83F", "10Y1001A1001A63L", "10YDE-ENBW-----N", "10YDE-EON------1", "10YDE-RWENET---I", "10YDE-VE-------2"],
+    "Greece": ["10YGR-HTSO-----Y"],
+    "Hungary": ["10YHU-MAVIR----U"],
+    "Ireland": ["10Y1001A1001A016", "10YIE-1001A00010", "10Y1001A1001A59C", "10Y1001A1001A63L"],
+    "Italy": ["10Y1001A1001A67D", "10Y1001A1001A68B", "10Y1001A1001A70O", "10Y1001A1001A71M", "10Y1001A1001A75E", "10Y1001A1001A74G", "10Y1001A1001A73I", "10Y1001A1001A788", "10Y1001A1001A796"],
+    "Kosovo": ["10Y1001C--00100H"],
+    "Latvia": ["10YLV-1001A00074"],
+    "Lithuania": ["10YLT-1001A0008Q"],
+    "Luxembourg": ["10YLU-CEGEDEL-NQ"],
+    "Montenegro": ["10YCS-CG-TSO---S"],
+    "Netherlands": ["10YNL----------L"],
+    "North_Macedonia": ["10YMK-MEPSO----8"],
+    "Norway": ["10YNO-0--------C", "10YNO-1--------2", "10YNO-2--------T", "10YNO-3--------J", "10YNO-4--------9", "10Y1001A1001A48H"],
+    "Poland": ["10YPL-AREA-----S"],
+    "Portugal": ["10YPT-REN------W"],
+    "Romania": ["10YRO-TEL------P"],
+    "Serbia": ["10YCS-SERBIATSOV"],
+    "Spain": ["10YES-REE------0"],
+    "Sweden": ["10Y1001A1001A44P", "10Y1001A1001A45N", "10Y1001A1001A46L", "10Y1001A1001A47J"],
+    "Switzerland": ["10YCH-SWISSGRIDZ"]
 }
 
 def fetch_generation_forecast(start_str, end_str, country_code):
-    """
-    Fetches day-ahead generation forecast data from the ENTSO-E API using documentType=A71 and processType=A01.
-    """
+
     url = (f"{BASE_URL}?documentType=A71&processType=A01&in_Domain={country_code}"
            f"&periodStart={start_str}&periodEnd={end_str}&securityToken={API_KEY}")
     print("Requesting Generation Forecast URL:")
@@ -56,29 +81,8 @@ def fetch_generation_forecast(start_str, end_str, country_code):
     return None
 
 def parse_and_format_generation_forecast(xml_data, country_name, timezone_offset):
-    """
-    Parses the Generation Forecast XML data and returns a formatted DataFrame.
-    
-    Expected XML structure:
-      - Root element: <GL_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-6:generationloaddocument:3:0">
-      - Contains one or more <TimeSeries> elements.
-      - Each <TimeSeries> includes a <Period> element with:
-            <timeInterval><start>...</start><end>...</end></timeInterval>,
-            <resolution>PT60M</resolution> (hourly data),
-            and multiple <Point> elements, each containing:
-                <position>...</position>
-                <quantity>...</quantity>
-                
-    The resulting DataFrame includes:
-      - timestamp (local time)
-      - generation_forecast (float)
-      - day_of_week (0=Monday, …, 6=Sunday)
-      - country
-      - data_type (set to 'generation_forecast')
-    """
     try:
         root = ET.fromstring(xml_data)
-        # Use the namespace from the sample XML provided
         ns = {'ns': 'urn:iec62325.351:tc57wg16:451-6:generationloaddocument:3:0'}
         time_series_list = root.findall('.//ns:TimeSeries', ns)
         print(f"For {country_name}, found {len(time_series_list)} TimeSeries elements.")
@@ -91,7 +95,7 @@ def parse_and_format_generation_forecast(xml_data, country_name, timezone_offset
             period_start_el = period.find('.//ns:timeInterval/ns:start', ns)
             if period_start_el is None:
                 continue
-            period_start = period_start_el.text  # e.g., "2025-02-03T23:00Z"
+            period_start = period_start_el.text
             resolution = period.find('.//ns:resolution', ns)
             if resolution is None or resolution.text != "PT60M":
                 continue
@@ -117,12 +121,12 @@ def parse_and_format_generation_forecast(xml_data, country_name, timezone_offset
                 })
         df = pd.DataFrame(formatted_data)
         if not df.empty:
-            # Group by timestamp, country, and data_type and take the maximum forecast value
             df = df.groupby(['timestamp', 'country', 'data_type'], as_index=False).agg({
                 'generation_forecast': 'max',
                 'day_of_week': 'first'
             })
-        # Reorder columns to the optimal order
+        else:
+            print("Warning: The DataFrame is empty after parsing.")
         df = df[['timestamp', 'generation_forecast', 'day_of_week', 'country', 'data_type']]
         df.sort_values(by='timestamp', inplace=True)
         return df
@@ -130,7 +134,6 @@ def parse_and_format_generation_forecast(xml_data, country_name, timezone_offset
         print(f"Error parsing generation forecast XML for {country_name}: {e}")
         return pd.DataFrame()
 
-# Main data retrieval loop for Generation Forecast
 all_data = []
 for country_name, codes in country_codes.items():
     for country_code in codes:
@@ -141,6 +144,7 @@ for country_name, codes in country_codes.items():
             if not df.empty:
                 print(f"\nFormatted DataFrame for {country_name}:")
                 print(df.head())
+                print(f"Number of rows in the DataFrame: {len(df)}")
                 all_data.append(df)
                 break  # Use the first non-empty result for this country
             else:
@@ -154,6 +158,7 @@ if all_data:
     
     print("Final Generation Forecast DataFrame preview:")
     print(final_df.head())
+    print(f"Total number of records: {len(final_df)}")
     
     # Save the DataFrame as a CSV file compressed with gzip in root/data/generation/
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))

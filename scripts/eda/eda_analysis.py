@@ -1,114 +1,76 @@
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
+import matplotlib.dates as mdates
+import numpy as np
+
+def detect_outliers(series, threshold=3):
+    mean_val = series.mean()
+    std_dev = series.std()
+    z_scores = (series - mean_val) / std_dev
+    return abs(z_scores) > threshold
+
+def remove_outliers(df, column):
+    if column not in df.columns:
+        return df 
+    
+    outliers = detect_outliers(df[column])
+    df_cleaned = df[~outliers]
+    return df_cleaned
 
 def main():
-    # Determine the base directory (project root) relative to this file
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    print("Base directory:", base_dir)
+    merged_dir = os.path.join(base_dir, "data", "merged_data")
     
-    # Construct the path to the merged dataset file
-    merged_file = os.path.join(base_dir, "data", "merged_data", "merged_dataset_20250206.csv.gz")
-    print("Merged dataset path:", merged_file)
-    
-    # Load the merged dataset from the CSV.gz file
-    try:
-        df = pd.read_csv(merged_file, compression="gzip")
-    except Exception as e:
-        print("Error loading merged dataset:", e)
+    files = [f for f in os.listdir(merged_dir) if f.startswith("merged_dataset_") and f.endswith(".csv.gz")]
+    files.sort()
+    if not files:
+        print("Error: No merged dataset found.")
         return
-
-    # Convert the timestamp column to datetime objects
+    
+    merged_file = os.path.join(merged_dir, files[-1])
+    df = pd.read_csv(merged_file, compression="gzip")
     df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
     
-    # -----------------------------
-    # Console Output: Basic EDA
-    # -----------------------------
-    print("\nFirst 5 rows of the merged dataset:")
-    print(df.head())
+    pivot = df.pivot_table(index="timestamp", columns="measurement_type", values="measurement", aggfunc="mean")
+    pivot = pivot.dropna()
     
-    print("\nDataFrame Information:")
-    print(df.info())
+    # Resample data to 4-day averages
+    pivot_weekly = pivot.resample("5D").mean()
     
-    print("\nSummary Statistics:")
-    print(df.describe())
+    # Remove outliers from "actual_load", "generation_forecast", and "energy_price"
+    for col in ["actual_load", "generation_forecast", "energy_price"]:
+        if col in pivot_weekly.columns:
+            pivot_weekly = remove_outliers(pivot_weekly, col)
     
-    print("\nMissing Values by Column:")
-    print(df.isnull().sum())
+    # Plot results
+    fig, ax1 = plt.subplots(figsize=(12, 5), constrained_layout=True)
+    if "actual_load" in pivot_weekly.columns:
+        ax1.plot(pivot_weekly.index, pivot_weekly["actual_load"], label="Actual Load (4-Day Avg)", marker="o", linestyle="-")
+    if "generation_forecast" in pivot_weekly.columns:
+        ax1.plot(pivot_weekly.index, pivot_weekly["generation_forecast"], label="Generation Forecast (4-Day Avg)", marker="x", linestyle="-")
     
-    duplicates = df.duplicated().sum()
-    print(f"\nNumber of duplicate rows: {duplicates}")
+    ax1.set_xlabel("Timestamp")
+    ax1.set_ylabel("MW")
+    ax1.set_title("4-Day Average Generation Forecast, Actual Load, and Energy Price (Filtered)")
+    ax1.legend(loc="upper left")
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+    plt.xticks(rotation=45)
+    ax1.grid(True, linestyle="--", alpha=0.6)
     
-    # -----------------------------
-    # Visualization 1: Distribution of Measurement Values
-    # -----------------------------
-    plt.figure(figsize=(10, 6))
-    # **Added color "skyblue", grid, and detailed axis labels with units (note: values may be in MW or €/MWh)**
-    sns.histplot(df['measurement'], bins=50, kde=True, color="skyblue")
-    plt.title("Distribution of Measurement Values in Merged Dataset")
-    plt.xlabel("Measurement Value (MW or €/MWh)")
-    plt.ylabel("Frequency")
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.tight_layout()
-    dist_plot_path = os.path.join(base_dir, "data", "merged_data", "measurement_distribution.png")
-    plt.savefig(dist_plot_path)
-    print(f"Measurement distribution plot saved to: {dist_plot_path}")
+    if "energy_price" in pivot_weekly.columns:
+        ax2 = ax1.twinx()
+        ax2.plot(pivot_weekly.index, pivot_weekly["energy_price"], label="Energy Price (4-Day Avg)", marker="s", linestyle="--", color="red")
+        ax2.set_ylabel("Energy Price (€/MWh)")
+        ax2.legend(loc="upper right")
+    
+    # Save 
+    plots_dir = os.path.join(base_dir, "data", "plots")
+    os.makedirs(plots_dir, exist_ok=True)
+    plot_path = os.path.join(plots_dir, "filtered_4day_generation_vs_actual_load_price.png")
+    plt.savefig(plot_path)
+    print(f"Filtered 4-day average plot with energy price saved to: {plot_path}")
     plt.show()
-    
-    # -----------------------------
-    # Visualization 2: Counts of Each Measurement Type
-    # -----------------------------
-    plt.figure(figsize=(8, 4))
-    # **Using a 'viridis' color palette and annotating each bar with count values**
-    ax = sns.countplot(x='measurement_type', data=df, palette="viridis")
-    plt.title("Records per Energy Measurement Type")
-    plt.xlabel("Energy Measurement Type")
-    plt.ylabel("Count")
-    plt.grid(axis='y', linestyle="--", alpha=0.6)
-    for p in ax.patches:
-        height = p.get_height()
-        ax.annotate(f'{height}', (p.get_x() + p.get_width() / 2., height),
-                    ha='center', va='bottom', fontsize=10, color='black')
-    plt.tight_layout()
-    count_plot_path = os.path.join(base_dir, "data", "merged_data", "measurement_type_counts.png")
-    plt.savefig(count_plot_path)
-    print(f"Measurement type count plot saved to: {count_plot_path}")
-    plt.show()
-    
-    # -----------------------------
-    # Visualization 3: Time Series Plots by Measurement Type
-    # -----------------------------
-    measurement_types = df['measurement_type'].unique()
-    for m_type in measurement_types:
-        plt.figure(figsize=(12, 4))
-        subset = df[df['measurement_type'] == m_type]
-        # **Choose a specific color based on measurement type**
-        if m_type == "actual_load":
-            plot_color = "blue"
-            ylabel_text = "Energy Load (MW)"
-        elif m_type == "generation_forecast":
-            plot_color = "green"
-            ylabel_text = "Generation Forecast (MW)"
-        elif m_type == "energy_price":
-            plot_color = "red"
-            ylabel_text = "Energy Price (€/MWh)"
-        else:
-            plot_color = "gray"
-            ylabel_text = "Measurement"
-        
-        plt.plot(subset['timestamp'], subset['measurement'], marker='o', linestyle='-', color=plot_color, label=m_type)
-        plt.title(f"Time Series for {m_type.replace('_', ' ').title()}")
-        plt.xlabel("Timestamp")
-        plt.ylabel(ylabel_text)
-        plt.xticks(rotation=45)
-        plt.grid(True, linestyle="--", alpha=0.6)
-        plt.legend()
-        plt.tight_layout()
-        timeseries_plot_path = os.path.join(base_dir, "data", "merged_data", f"time_series_{m_type}.png")
-        plt.savefig(timeseries_plot_path)
-        print(f"Time series plot for {m_type} saved to: {timeseries_plot_path}")
-        plt.show()
 
 if __name__ == "__main__":
     main()

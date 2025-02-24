@@ -1,130 +1,134 @@
 import os
-import glob
+import sys
 import pandas as pd
 from datetime import datetime
-from dotenv import load_dotenv
 
-# -----------------------------
-# Define base directory
-# -----------------------------
-# Assumes this script is located in root/scripts/ (or one level below root)
-base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-print("Base directory:", base_dir)
+def get_single_file(directory):
+    try:
+        files = [f for f in os.listdir(directory) if f.endswith(".csv.gz")]
+        if files:
+            files.sort() 
+            return os.path.join(directory, files[0])
+        else:
+            return None
+    except Exception as e:
+        print(f"Error listing files in {directory}: {e}")
+        return None
 
-# -----------------------------
-# Define directory paths for each dataset
-# -----------------------------
-load_dir = os.path.join(base_dir, "data", "load")
-generation_dir = os.path.join(base_dir, "data", "generation")
-price_dir = os.path.join(base_dir, "data", "price")
-print("Load directory:", load_dir)
-print("Generation directory:", generation_dir)
-print("Price directory:", price_dir)
+def main():
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    print("Base directory:", base_dir)
+    
+    # Directories for each dataset
+    load_dir = os.path.join(base_dir, "data", "load")
+    generation_dir = os.path.join(base_dir, "data", "generation")
+    price_dir = os.path.join(base_dir, "data", "price")
+    
+    print("Load directory:", load_dir)
+    print("Generation directory:", generation_dir)
+    print("Price directory:", price_dir)
+    
+    load_file = get_single_file(load_dir)
+    generation_file = get_single_file(generation_dir)
+    price_file = get_single_file(price_dir)
+    
+    if load_file:
+        print("Found load file:", load_file)
+    else:
+        print(f"Error: No load CSV file found in {load_dir}.")
+        sys.exit(1)
+        
+    if generation_file:
+        print("Found generation file:", generation_file)
+    else:
+        print(f"Error: No generation CSV file found in {generation_dir}.")
+        sys.exit(1)
+    
+    if price_file:
+        print("Found price file:", price_file)
+        try:
+            df_price = pd.read_csv(price_file, compression="gzip")
+            print(f"Loaded price data with {df_price.shape[0]} rows.")
+        except Exception as e:
+            print(f"Error loading price file: {e}")
+            df_price = pd.DataFrame(columns=[
+                "timestamp", "country", "day_of_week", "measurement_type",
+                "measurement", "measurement_unit", "hour", "day", "month", "year"
+            ])
+    else:
+        print(f"Warning: No price CSV file found in {price_dir}. Price data will be skipped.")
+        df_price = pd.DataFrame(columns=[
+            "timestamp", "country", "day_of_week", "measurement_type",
+            "measurement", "measurement_unit", "hour", "day", "month", "year"
+        ])
 
-# -----------------------------
-# Use glob to find CSV files in each directory (files with extension .csv.gz)
-# -----------------------------
-load_files = glob.glob(os.path.join(load_dir, "*.csv.gz"))
-generation_files = glob.glob(os.path.join(generation_dir, "*.csv.gz"))
-price_files = glob.glob(os.path.join(price_dir, "*.csv.gz"))
+    try:
+        print("Loading load data from:", load_file)
+        df_load = pd.read_csv(load_file, compression="gzip")
+        print(f"Loaded load data with {df_load.shape[0]} rows.")
+    except Exception as e:
+        print(f"Error loading load file: {e}")
+        sys.exit(1)
+    
+    try:
+        print("Loading generation data from:", generation_file)
+        df_generation = pd.read_csv(generation_file, compression="gzip")
+        print(f"Loaded generation data with {df_generation.shape[0]} rows.")
+    except Exception as e:
+        print(f"Error loading generation file: {e}")
+        sys.exit(1)
+    
+    if 'data_type' in df_load.columns:
+        df_load.rename(columns={'data_type': 'measurement_type'}, inplace=True)
+    else:
+        df_load['measurement_type'] = 'actual_load'
+        
+    if 'data_type' in df_generation.columns:
+        df_generation.rename(columns={'data_type': 'measurement_type'}, inplace=True)
+    else:
+        df_generation['measurement_type'] = 'generation_forecast'
+        
+    if 'data_type' in df_price.columns:
+        df_price.rename(columns={'data_type': 'measurement_type'}, inplace=True)
+    else:
+        df_price['measurement_type'] = 'energy_price'
+    
+    if 'load_value' in df_load.columns:
+        df_load['measurement'] = df_load['load_value']
+    else:
+        print("Warning: 'load_value' column missing in load data.")
+    
+    if 'generation_forecast' in df_generation.columns:
+        df_generation['measurement'] = df_generation['generation_forecast']
+    else:
+        print("Warning: 'generation_forecast' column missing in generation data.")
+    
+    if 'energy_price' in df_price.columns:
+        df_price['measurement'] = df_price['energy_price']
+    else:
+        print("Warning: 'energy_price' column missing in price data.")
+    
+    merged_df = pd.concat([df_load, df_generation, df_price], axis=0, ignore_index=True)
+    
+    merged_df['timestamp'] = pd.to_datetime(merged_df['timestamp'])
+    merged_df['hour'] = merged_df['timestamp'].dt.hour
+    merged_df['day'] = merged_df['timestamp'].dt.day
+    merged_df['month'] = merged_df['timestamp'].dt.month
+    merged_df['year'] = merged_df['timestamp'].dt.year
+    
+    merged_df.sort_values(by=["timestamp", "country"], inplace=True)
 
-if not load_files:
-    print("No load CSV file found in", load_dir)
-    exit(1)
-else:
-    load_file = load_files[0]
-    print("Found load file:", load_file)
+    merged_dir = os.path.join(base_dir, "data", "merged_data")
+    os.makedirs(merged_dir, exist_ok=True)
+    merged_output_path = os.path.join(merged_dir, f"merged_dataset_{datetime.now().strftime('%Y%m%d')}.csv.gz")
+    
 
-if not generation_files:
-    print("No generation CSV file found in", generation_dir)
-    exit(1)
-else:
-    generation_file = generation_files[0]
-    print("Found generation file:", generation_file)
-
-if not price_files:
-    print("No price CSV file found in", price_dir)
-    exit(1)
-else:
-    price_file = price_files[0]
-    print("Found price file:", price_file)
-
-# -----------------------------
-# Load the datasets
-# -----------------------------
-try:
-    df_load = pd.read_csv(load_file)
-    df_generation = pd.read_csv(generation_file)
-    df_price = pd.read_csv(price_file)
-    print("Datasets loaded successfully.")
-except Exception as e:
-    print(f"Error loading one or more files: {e}")
-    exit(1)
-
-# -----------------------------
-# Convert the timestamp columns to datetime objects
-# -----------------------------
-df_load['timestamp'] = pd.to_datetime(df_load['timestamp'], errors='coerce')
-df_generation['timestamp'] = pd.to_datetime(df_generation['timestamp'], errors='coerce')
-df_price['timestamp'] = pd.to_datetime(df_price['timestamp'], errors='coerce')
-
-# -----------------------------
-# Standardize and reformat each dataset
-# -----------------------------
-# Actual Total Load: rename "load_value" to "measurement" and add constant labels.
-df_load = df_load.rename(columns={"load_value": "measurement"})
-df_load["measurement_type"] = "actual_load"
-df_load["measurement_unit"] = "MW"
-df_load = df_load[["timestamp", "country", "day_of_week", "measurement_type", "measurement", "measurement_unit"]]
-
-# Generation Forecast Day-Ahead: rename "generation_forecast" to "measurement" and add labels.
-df_generation = df_generation.rename(columns={"generation_forecast": "measurement"})
-df_generation["measurement_type"] = "generation_forecast"
-df_generation["measurement_unit"] = "MW"
-df_generation = df_generation[["timestamp", "country", "day_of_week", "measurement_type", "measurement", "measurement_unit"]]
-
-# Energy Price: rename "energy_price" to "measurement" and add labels.
-df_price = df_price.rename(columns={"energy_price": "measurement"})
-df_price["measurement_type"] = "energy_price"
-df_price["measurement_unit"] = "€/MWh"
-df_price = df_price[["timestamp", "country", "day_of_week", "measurement_type", "measurement", "measurement_unit"]]
-
-# -----------------------------
-# Merge the datasets by stacking them vertically
-# -----------------------------
-merged_df = pd.concat([df_load, df_generation, df_price], axis=0, ignore_index=True)
-
-# -----------------------------
-# Sort the merged DataFrame by timestamp and country for clarity
-# -----------------------------
-merged_df.sort_values(by=["timestamp", "country"], inplace=True)
-
-# -----------------------------
-# Feature Engineering: Extract additional time-based features
-# -----------------------------
-merged_df["hour"] = merged_df["timestamp"].dt.hour
-merged_df["day"] = merged_df["timestamp"].dt.day
-merged_df["month"] = merged_df["timestamp"].dt.month
-merged_df["year"] = merged_df["timestamp"].dt.year
-
-# -----------------------------
-# (Optional) Reorder columns if desired
-# -----------------------------
-# Here we choose the order: timestamp, country, day_of_week, measurement_type, measurement, measurement_unit, hour, day, month, year
-merged_df = merged_df[["timestamp", "country", "day_of_week", "measurement_type", "measurement", "measurement_unit", "hour", "day", "month", "year"]]
-
-# -----------------------------
-# Save the merged dataset
-# -----------------------------
-merged_dir = os.path.join(base_dir, "data", "merged_data")
-os.makedirs(merged_dir, exist_ok=True)
-merged_output_path = os.path.join(merged_dir, "merged_dataset_20250206.csv.gz")
-
-# Remove the existing file if it exists so that the new one is written fresh
-if os.path.exists(merged_output_path):
-    os.remove(merged_output_path)
-    print(f"Existing file at {merged_output_path} removed.")
-
-merged_df.to_csv(merged_output_path, index=False, compression="gzip")
-print(f"Merged dataset saved to {merged_output_path}")
-
+    if os.path.exists(merged_output_path):
+        os.remove(merged_output_path)
+        print(f"Existing file at {merged_output_path} removed.")
+    
+    merged_df.to_csv(merged_output_path, index=False, compression="gzip")
+    print(f"Merged dataset saved to {merged_output_path}")
+    
+if __name__ == "__main__":
+    main()
